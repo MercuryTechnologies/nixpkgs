@@ -245,6 +245,8 @@ let
     "--ghc-options=-haddock"
   ];
 
+  postPhases = optional doInstallDist [ "installDistPhase" ];
+
   setupCompileFlags = [
     (optionalString (!coreSetup) "-${nativePackageDbFlag}=$setupPackageConfDir")
     (optionalString enableParallelBuilding (parallelBuildingFlags))
@@ -326,8 +328,7 @@ stdenv.mkDerivation ({
 
   prePhases = ["setupCompilerEnvironmentPhase"];
   preConfigurePhases = ["compileBuildDriverPhase"];
-  preInstallPhases =
-    ["haddockPhase"] ++ optional doInstallDist "installDistPhase";
+  preInstallPhases = ["haddockPhase"];
 
   inherit src;
 
@@ -743,10 +744,7 @@ stdenv.mkDerivation ({
 // optionalAttrs (args ? preFixup)               { inherit preFixup; }
 // optionalAttrs (args ? postFixup)              { inherit postFixup; }
 // optionalAttrs (args ? dontStrip)              { inherit dontStrip; }
-// optionalAttrs enableSeparateDistOutput {
-     # Don't strip the dist output
-     preFixupHooks = [ "outputs=(\${outputs[@]/dist})" ];
-   }
+// optionalAttrs (postPhases != [])              { inherit postPhases; }
 // optionalAttrs (stdenv.buildPlatform.libc == "glibc"){ LOCALE_ARCHIVE = "${glibcLocales}/lib/locale/locale-archive"; }
 )
 )
