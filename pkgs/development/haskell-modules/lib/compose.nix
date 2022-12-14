@@ -487,48 +487,91 @@ rec {
   # appears to no longer be necessary anyway on newer versions of macOS.  For
   # example, this was stress-tested successfully without the work-around on
   # macOS Ventura 13.0.1.
-  incremental = { interval }: pkg:
+  #
+  # The type of this function is conceptually:
+  #
+  # ```
+  # incremental
+  #   : { interval : Duration
+  #     , makePreviousBuild : (Derivation → Derivation) → Derivation
+  #     }
+  #   → Derivation
+  #   → Derivation
+  # ```
+  #
+  # Example usage:
+  #
+  # ```
+  # let
+  #   interval = 24 * 60 * 60;  # 1 day
+  #
+  #   makePreviousBuild =
+  #     floorToTimeBoundary:
+  #       import "${floorToTimeBoundary ./path/to/repository}/example.nix";
+  #
+  # in
+  #   incremental { inherit interval makePreviousBuild; } example
+  # ```
+  #
+  # To understand how the above example works, suppose that:
+  #
+  # - you are building a Haskell package named `example`
+  # - `./path/to/repository/example.nix` is a Nix file that builds that package
+  #
+  # Then what `floorToTimeBoundary` does in the above example is it takes the
+  # path to any repository (e.g. `./path/to/repository`) and rolls back that
+  # repository to the last time boundary (e.g. the latest UTC midnight in the
+  # above example, because the `interval` is 1 day).  Then all we need to do
+  # is locate and build the older version of our package stored within that
+  # earlier snapshot of the repository (in the above example by importing
+  # `./example.nix`, although the exact details of how to locate and build the
+  # the Haskell package will vary from repository to repository).
+  #
+  # In other words, if you explain to the `incremental` function how to build
+  # the older version of your package then it will take care of automatically
+  # selecting the correct revision to use for the full build.
+  incremental = { interval, makePreviousBuild }: pkg:
     let
       requiredNixVersion = "2.12.0pre20221128_32c182b";
       requiredGHCVersion = "9.4";
+
+      truncate = src:
+        let
+          srcAttributes =
+            if lib.isAttrs src
+            then src
+            else { url = src; };
+
+          url = srcAttributes.url or null;
+          name = srcAttributes.name or null;
+          submodules = srcAttributes.fetchSubmodules or null;
+
+        in
+          builtins.fetchGit
+            { ${ if name == null then null else "name" } = name;
+              ${ if url == null then null else "url" } = url;
+              ${ if submodules == null then null else "submodules" } = submodules;
+              date =
+                let
+                  now = builtins.currentTime;
+                in
+                  "${toString ((now / interval) * interval)}";
+            };
+
+      previousBuild =
+          (overrideCabal
+            (old: {
+              doInstallDist = true;
+              enableSeparateDistOutput = true;
+            })
+            (makePreviousBuild truncate)
+          ).dist;
+
     in
       if builtins.compareVersions requiredNixVersion builtins.nixVersion == 1 then
         abort "pkgs.haskell.lib.incremental requires Nix version ${requiredNixVersion} or newer"
       else if builtins.compareVersions requiredGHCVersion pkg.passthru.compiler.version == 1 then
         abort "pkgs.haskell.lib.incremental requires GHC version ${requiredGHCVersion} or newer"
       else
-        overrideCabal
-          (old: {
-            previousBuild =
-              (overrideCabal
-                (old: {
-                  doInstallDist = true;
-                  enableSeparateDistOutput = true;
-                  src =
-                    let
-                      srcAttributes =
-                        if lib.isAttrs old.src
-                        then old.src
-                        else { url = old.src; };
-
-                      url = srcAttributes.url or null;
-                      name = srcAttributes.name or null;
-                      submodules = srcAttributes.fetchSubmodules or null;
-
-                    in
-                      builtins.fetchGit
-                        { ${ if name == null then null else "name" } = name;
-                          ${ if url == null then null else "url" } = url;
-                          ${ if submodules == null then null else "submodules" } = submodules;
-                          date =
-                            let
-                              now = builtins.currentTime;
-                            in
-                              "${toString ((now / interval) * interval)}";
-                        };
-                })
-                pkg
-              ).dist;
-          })
-          pkg;
+        overrideCabal (old: { inherit previousBuild; }) pkg;
 }
