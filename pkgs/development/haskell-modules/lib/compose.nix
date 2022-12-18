@@ -545,17 +545,47 @@ rec {
           name = srcAttributes.name or null;
           submodules = srcAttributes.fetchSubmodules or null;
 
-        in
-          builtins.fetchGit
-            { ${ if name == null then null else "name" } = name;
-              ${ if url == null then null else "url" } = url;
-              ${ if submodules == null then null else "submodules" } = submodules;
-              date =
+          arguments = {
+            ${ if name == null then null else "name" } = name;
+            ${ if url == null then null else "url" } = url;
+            ${ if submodules == null then null else "submodules" } = submodules;
+          };
+
+          # You might wonder why we don't just do something like:
+          #
+          # builtins.fetchGit {
+          #   inherit (srcAttributes) rev;
+          #   date = "1 day ago";
+          # }
+          #
+          # This does not produce the desired behavior because it will not
+          # ensure that each incremental build for a given day shares the same
+          # full build (especially if the prior day had multiple commits, each
+          # of which could potentially be selected as the commit from "1 day
+          # ago".
+          #
+          # Instead, what we want is for each build for a given day (or whatever
+          # time interval) to select the same commit from the prior day to
+          # promote reuse of the same full build.  That's why we need to do this
+          # complicated calculation at evaluation time in Nix instead of reusing
+          # Git's built-in support for relative date specifications.
+          startingTime =
+              if      srcAttributes ? rev
+                  &&  srcAttributes.rev != "0000000000000000000000000000000000000000"
+              then
                 let
-                  now = builtins.currentTime;
+                  startingRepository = builtins.fetchGit (arguments // {
+                    inherit (srcAttributes) rev;
+                  });
                 in
-                  "${toString ((now / interval) * interval)}";
-            };
+                  startingRepository.lastModified
+              else
+                builtins.currentTime;
+
+        in
+          builtins.fetchGit (arguments // {
+            date = "${toString ((startingTime / interval) * interval)}";
+          });
 
       previousBuild =
           (overrideCabal
