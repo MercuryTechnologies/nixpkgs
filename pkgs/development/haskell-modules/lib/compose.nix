@@ -530,7 +530,7 @@ rec {
   # In other words, if you explain to the `incremental` function how to build
   # the older version of your package then it will take care of automatically
   # selecting the correct revision to use for the full build.
-  incremental = { interval, makePreviousBuild }: pkg:
+  incremental = { interval, makePreviousBuild, extraFetchGitArgs ? { } }: pkg:
     let
       requiredNixVersion = "2.12.0pre20221128_32c182b";
       requiredGHCVersion = "9.4";
@@ -586,7 +586,7 @@ rec {
         in
           builtins.fetchGit (arguments // {
             date = "${toString ((startingTime / interval) * interval)}";
-          });
+          } // extraFetchGitArgs);
 
       previousBuild =
           (overrideCabal
