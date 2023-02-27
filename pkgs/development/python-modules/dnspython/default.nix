@@ -21,7 +21,6 @@ buildPythonPackage rec {
 
   nativeCheckInputs = [
     pytestCheckHook
-  ] ++ lib.optionals stdenv.isDarwin [
     cacert
   ];
 
