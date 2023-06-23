@@ -12982,8 +12982,6 @@ with pkgs;
 
   telescope = callPackage ../applications/networking/browsers/telescope { };
 
-  tensorboard = callPackage ../misc/tensorboard { };
-
   termcolor = callPackage ../development/libraries/termcolor { };
 
   termscp = callPackage ../tools/networking/termscp {
