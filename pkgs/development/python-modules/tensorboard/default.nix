@@ -32,7 +32,7 @@ buildPythonPackage rec {
     inherit pname version format;
     dist = "py3";
     python = "py3";
-    sha256 = "ab69961ebddbddc83f5fa2ff9233572bdad5b883778c35e4fe94bf1798bd8481";
+    hash = "sha256-q2mWHr3b3cg/X6L/kjNXK9rVuIN3jDXk/pS/F5i9hIE=";
   };
 
   nativeBuildInputs = [
