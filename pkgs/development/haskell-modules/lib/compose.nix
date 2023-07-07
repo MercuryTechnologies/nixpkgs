@@ -628,14 +628,14 @@ rec {
             date = "${toString ((startingTime / interval) * interval)}";
           } // extraFetchGitArgs);
 
-      previousBuild =
+      previousIntermediates =
           (overrideCabal
             (old: {
               doInstallIntermediates = true;
               enableSeparateIntermediatesOutput = true;
             })
             (makePreviousBuild truncate)
-          ).dist;
+          ).intermediates;
 
     in
       if builtins.compareVersions requiredNixVersion builtins.nixVersion == 1 then
@@ -643,5 +643,5 @@ rec {
       else if builtins.compareVersions requiredGHCVersion pkg.passthru.compiler.version == 1 then
         abort "pkgs.haskell.lib.incremental requires GHC version ${requiredGHCVersion} or newer"
       else
-        overrideCabal (old: { inherit previousBuild; }) pkg;
+        overrideCabal (old: { inherit previousIntermediates; }) pkg;
 }
