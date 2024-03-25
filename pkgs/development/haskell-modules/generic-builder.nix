@@ -1,6 +1,7 @@
 { lib, stdenv, buildPackages, buildHaskellPackages, ghc
 , jailbreak-cabal, hscolour, cpphs, nodejs
 , ghcWithHoogle, ghcWithPackages
+, cabal-install
 }:
 
 let
@@ -81,6 +82,7 @@ in
 , coreSetup ? false # Use only core packages to build Setup.hs.
 , useCpphs ? false
 , hardeningDisable ? null
+, useCabalInstall ? false
 , enableSeparateBinOutput ? false
 , enableSeparateDataOutput ? false
 , enableSeparateDocOutput ? doHaddock
@@ -324,6 +326,7 @@ let
     optionals doBenchmark benchmarkToolDepends;
   nativeBuildInputs =
     [ ghc removeReferencesTo ] ++ optional (allPkgconfigDepends != []) (assert pkg-config != null; pkg-config) ++
+    optional useCabalInstall cabal-install ++
     setupHaskellDepends ++ collectedToolDepends;
   propagatedBuildInputs = buildDepends ++ libraryHaskellDepends ++ executableHaskellDepends ++ libraryFrameworkDepends;
   otherBuildInputsHaskell =
@@ -341,7 +344,7 @@ let
     optionals doCheck (testDepends ++ testHaskellDepends ++ testSystemDepends ++ testFrameworkDepends) ++
     optionals doBenchmark (benchmarkDepends ++ benchmarkHaskellDepends ++ benchmarkSystemDepends ++ benchmarkFrameworkDepends);
 
-  setupCommand = "./Setup";
+  setupCommand = if useCabalInstall then "cabal" else "./Setup";
 
   ghcCommand' = if isGhcjs then "ghcjs" else "ghc";
   ghcCommand = "${ghc.targetPrefix}${ghcCommand'}";
@@ -386,7 +389,10 @@ stdenv.mkDerivation ({
   pos = builtins.unsafeGetAttrPos "pname" args;
 
   prePhases = ["setupCompilerEnvironmentPhase"];
-  preConfigurePhases = ["compileBuildDriverPhase"];
+
+  ${ if useCabalInstall then null else "preConfigurePhases" } =
+    ["compileBuildDriverPhase"];
+
   preInstallPhases = ["haddockPhase"];
 
   inherit src;
@@ -451,6 +457,8 @@ stdenv.mkDerivation ({
       if [[ -d "$p/Library/Frameworks" ]]; then
         configureFlags+=" --extra-framework-dirs=$p/Library/Frameworks"
       fi
+  '' + lib.optionalString useCabalInstall ''
+    HOME="$TMPDIR"
   '' + ''
     done
   ''
@@ -536,7 +544,7 @@ stdenv.mkDerivation ({
         exit 1
       fi
     ''}
-    export GHC_PACKAGE_PATH="$packageConfDir:"
+    ${lib.optionalString (!useCabalInstall) ''export GHC_PACKAGE_PATH="$packageConfDir:"''}
 
     runHook postConfigure
   '';
@@ -566,7 +574,7 @@ stdenv.mkDerivation ({
   checkPhase = ''
     runHook preCheck
     checkFlagsArray+=(
-      "--show-details=streaming"
+      "--${lib.optionalString useCabalInstall "test-"}show-details=streaming"
       ${lib.escapeShellArgs (builtins.map (opt: "--test-option=${opt}") testFlags)}
     )
     ${setupCommand} test ${testTarget} $checkFlags ''${checkFlagsArray:+"''${checkFlagsArray[@]}"}
@@ -590,7 +598,9 @@ stdenv.mkDerivation ({
 
     ${if !isLibrary && buildTarget == "" then "${setupCommand} install"
       # ^^ if the project is not a library, and no build target is specified, we can just use "install".
-      else if !isLibrary then "${setupCommand} copy ${buildTarget}"
+      else assert !useCabalInstall;
+      # ^^ The remaining commands only work with the old (v1) CLI
+      if !isLibrary then "${setupCommand} copy ${buildTarget}"
       # ^^ if the project is not a library, and we have a build target, then use "copy" to install
       # just the target specified; "install" will error here, since not all targets have been built.
     else ''
