@@ -184,7 +184,6 @@ in
     "15" = [ ../patches/14/gnat-darwin-dylib-install-name-14.patch ];
     "14" = [
        ../patches/14/gnat-darwin-dylib-install-name-14.patch
-       ../patches/14/gcc-14.3_Driver-Enable-very-long-gcc-command.patch
     ];
     "13" = [ ./gnat-darwin-dylib-install-name-13.patch ];
   }
@@ -223,6 +222,21 @@ in
         hash = "sha256-xqkBDFYZ6fdowtqR3kV7bR8a4Cu11RDokSzGn1k3a1w=";
       })
     ];
+  }
+  .${majorVersion} or [ ]
+)
+
+++ (
+  {
+    "15" = [
+        ./14/gcc-14.3_Driver-Enable-very-long-gcc-command.patch
+     ];
+    "14" = [
+        ./14/gcc-14.3_Driver-Enable-very-long-gcc-command.patch
+     ];
+    "13" = [
+        ./14/gcc-14.3_Driver-Enable-very-long-gcc-command.patch
+     ];
   }
   .${majorVersion} or [ ]
 )
