@@ -182,7 +182,10 @@ in
 ++ optionals (stdenv.hostPlatform.isDarwin && langAda) (
   {
     "15" = [ ../patches/14/gnat-darwin-dylib-install-name-14.patch ];
-    "14" = [ ../patches/14/gnat-darwin-dylib-install-name-14.patch ];
+    "14" = [
+       ../patches/14/gnat-darwin-dylib-install-name-14.patch
+       ../patches/14/gcc-14.3_Driver-Enable-very-long-gcc-command.patch
+    ];
     "13" = [ ./gnat-darwin-dylib-install-name-13.patch ];
   }
   .${majorVersion} or [ ]
