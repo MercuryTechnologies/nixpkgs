@@ -1,6 +1,6 @@
 diff -uarN gcc-14.3.0-a/gcc/collect2.cc gcc-14.3.0-b/gcc/collect2.cc
 --- gcc-14.3.0-a/gcc/collect2.cc	2025-05-23 04:02:04.264197080 -0700
-+++ gcc-14.3.0-b/gcc/collect2.cc	2025-09-02 12:39:28.902928545 -0700
++++ gcc-14.3.0-b/gcc/collect2.cc	2025-09-02 17:26:04.797866660 -0700
 @@ -376,6 +376,42 @@
  
  static void scan_prog_file (const char *, scanpass, scanfilter);
@@ -13,7 +13,7 @@ diff -uarN gcc-14.3.0-a/gcc/collect2.cc gcc-14.3.0-b/gcc/collect2.cc
 +  size_t prefix_len = strlen (prefix);
 +
 +  char* string = getenv (var_name);
-+
++  if (string == nullptr) return nullptr;
 +  if (strncmp (string, prefix, prefix_len) == 0)
 +    {
 +      FILE *fptr;
@@ -73,7 +73,7 @@ diff -uarN gcc-14.3.0-a/gcc/collect2.cc gcc-14.3.0-b/gcc/collect2.cc
  
 diff -uarN gcc-14.3.0-a/gcc/gcc.cc gcc-14.3.0-b/gcc/gcc.cc
 --- gcc-14.3.0-a/gcc/gcc.cc	2025-09-02 10:52:05.215529681 -0700
-+++ gcc-14.3.0-b/gcc/gcc.cc	2025-09-02 10:59:20.311692824 -0700
++++ gcc-14.3.0-b/gcc/gcc.cc	2025-09-02 17:26:14.218226755 -0700
 @@ -5658,7 +5658,24 @@
      }
  
@@ -82,7 +82,7 @@ diff -uarN gcc-14.3.0-a/gcc/gcc.cc gcc-14.3.0-b/gcc/gcc.cc
 +  const char *string = XOBFINISH (&collect_obstack, char *);
 +  const char *prefix = "COLLECT_GCC_OPTIONS=";
 +  size_t prefix_len = strlen (prefix);
-+
++  if (string == nullptr) return;
 +  if (strncmp (string, prefix, prefix_len) == 0)
 +    {
 +      const char *data_to_write = string + prefix_len;
@@ -102,7 +102,7 @@ diff -uarN gcc-14.3.0-a/gcc/gcc.cc gcc-14.3.0-b/gcc/gcc.cc
  /* Process a spec string, accumulating and running commands.  */
 diff -uarN gcc-14.3.0-a/gcc/lto-wrapper.cc gcc-14.3.0-b/gcc/lto-wrapper.cc
 --- gcc-14.3.0-a/gcc/lto-wrapper.cc	2025-05-23 04:02:04.756204840 -0700
-+++ gcc-14.3.0-b/gcc/lto-wrapper.cc	2025-09-02 11:01:11.895836059 -0700
++++ gcc-14.3.0-b/gcc/lto-wrapper.cc	2025-09-02 17:26:32.478924790 -0700
 @@ -1397,6 +1397,42 @@
    return errmsg == NULL && exit_status == 0 && err == 0;
  }
@@ -115,7 +115,7 @@ diff -uarN gcc-14.3.0-a/gcc/lto-wrapper.cc gcc-14.3.0-b/gcc/lto-wrapper.cc
 +  size_t prefix_len = strlen (prefix);
 +
 +  char* string = getenv (var_name);
-+
++  if (string == nullptr) return nullptr;
 +  if (strncmp (string, prefix, prefix_len) == 0)
 +    {
 +      FILE *fptr;
@@ -155,3 +155,57 @@ diff -uarN gcc-14.3.0-a/gcc/lto-wrapper.cc gcc-14.3.0-b/gcc/lto-wrapper.cc
    if (!collect_gcc_options)
      fatal_error (input_location,
  		 "environment variable %<COLLECT_GCC_OPTIONS%> must be set");
+diff -uarN gcc-14.3.0-a/lto-plugin/lto-plugin.c gcc-14.3.0-b/lto-plugin/lto-plugin.c
+--- gcc-14.3.0-a/lto-plugin/lto-plugin.c	2025-05-23 04:02:09.428278538 -0700
++++ gcc-14.3.0-b/lto-plugin/lto-plugin.c	2025-09-02 17:42:37.719336722 -0700
+@@ -1493,6 +1493,41 @@
+     }
+ }
+ 
++char* getenv_extended (const char* var_name)
++{
++  int file_size;
++  char* buf = NULL;
++  const char* prefix = "@";
++  size_t prefix_len = strlen (prefix);
++
++  char* string = getenv (var_name);
++  if (string == NULL) return NULL;
++  if (strncmp (string, prefix, prefix_len) == 0)
++    {
++      FILE *fptr;
++      char *new_string = xstrdup (string + prefix_len);
++
++      fptr = fopen (new_string, "r");
++      if (fptr == (FILE *) 0)
++	return NULL;
++
++      fseek (fptr, 0, SEEK_END);
++      file_size = ftell (fptr);
++      rewind (fptr);
++      buf = (char *) xmalloc (file_size + 1);
++
++      fread (buf, 1, file_size, fptr);
++      buf[file_size] = '\0';
++
++      free (new_string);
++      fclose (fptr);
++      return buf;
++    }
++
++  // Return the environment variable as-is if no file is referenced
++  return string;
++}
++
+ /* Called by a linker after loading the plugin. TV is the transfer vector. */
+ 
+ enum ld_plugin_status
+@@ -1604,7 +1639,7 @@
+ 	     "could not register the all_symbols_read callback");
+     }
+ 
+-  char *collect_gcc_options = getenv ("COLLECT_GCC_OPTIONS");
++  char *collect_gcc_options = getenv_extended ("COLLECT_GCC_OPTIONS");
+   if (collect_gcc_options)
+     {
+       /* Support -fno-use-linker-plugin by failing to load the plugin
