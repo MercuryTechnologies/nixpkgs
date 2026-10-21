@@ -93,6 +93,8 @@ jobs:
           ref: ${{ env.mergedSha }}
           # Fetches the merge commit and its parents
           fetch-depth: 2
+          # Don't leave the token in .git/config while PR content is evaluated
+          persist-credentials: false
       - name: Checking out base branch
         run: |
           base=$(mktemp -d)
@@ -101,6 +103,9 @@ jobs:
       - uses: cachix/install-nix-action@6004951b182f8860210c8d6f0d808ec5b1a33d28 # v25
       - name: Fetching the pinned tool
         # Update the pinned version using pkgs/test/nixpkgs-check-by-name/scripts/update-pinned-tool.sh
+        # Newer base branches (e.g. mercury-head) replaced the pinned tool with
+        # nixpkgs-vet (ci/nixpkgs-vet.nix); that is handled in the next step.
+        if: hashFiles('pkgs/test/nixpkgs-check-by-name/scripts/pinned-tool.json') != ''
         run: |
           # Get the direct /nix/store path from the pin to avoid having to evaluate Nixpkgs
           toolPath=$(jq -r '."ci-path"' pkgs/test/nixpkgs-check-by-name/scripts/pinned-tool.json)
@@ -108,10 +113,25 @@ jobs:
           nix-store --realise "$toolPath" --add-root result
       - name: Running nixpkgs-check-by-name
         run: |
-          if result/bin/nixpkgs-check-by-name --base "$base" .; then
-            exit 0
+          if [[ -e result/bin/nixpkgs-check-by-name ]]; then
+            if result/bin/nixpkgs-check-by-name --base "$base" .; then
+              exit 0
+            else
+              exitCode=$?
+              echo "To run locally: ./maintainers/scripts/check-by-name.sh $GITHUB_BASE_REF https://github.com/$GITHUB_REPOSITORY.git"
+              exit "$exitCode"
+            fi
+          elif [[ -f "$base/ci/nixpkgs-vet.nix" ]]; then
+            # Successor of nixpkgs-check-by-name. The check definition is taken
+            # from the trusted base branch; only the PR tree is inspected.
+            if nix-build "$base/ci" -A nixpkgs-vet --arg base "$base" --arg head "$PWD" --no-out-link; then
+              exit 0
+            else
+              exitCode=$?
+              echo "To run locally: ./ci/nixpkgs-vet.sh $GITHUB_BASE_REF https://github.com/$GITHUB_REPOSITORY.git"
+              exit "$exitCode"
+            fi
           else
-            exitCode=$?
-            echo "To run locally: ./maintainers/scripts/check-by-name.sh $GITHUB_BASE_REF https://github.com/$GITHUB_REPOSITORY.git"
-            exit "$exitCode"
+            echo "Neither the pinned nixpkgs-check-by-name tool nor ci/nixpkgs-vet.nix was found"
+            exit 1
           fi
